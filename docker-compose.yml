@@ -1,0 +1,44 @@
+name: nextlet
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nextlet
+      POSTGRES_USER: nextlet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nextlet}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextlet -d nextlet"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://nextlet:${POSTGRES_PASSWORD:-nextlet}@db:5432/nextlet
+      SEED_DEMO: ${SEED_DEMO:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Set NEXTLET_PASSWORD to require signing in (web and Mac app).
+      NEXTLET_PASSWORD: ${NEXTLET_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    ports:
+      # This machine only by default. Set NEXTLET_PASSWORD before opening it up.
+      - "${NEXTLET_BIND:-127.0.0.1}:${NEXTLET_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:

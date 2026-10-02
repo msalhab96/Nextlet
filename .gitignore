@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Mac app build output
+mac/.build/
+mac/build/
+mac/.swiftpm/
