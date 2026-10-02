@@ -1,6 +1,6 @@
 import Foundation
 
-/// Quick add understands days, #projects and !priority, e.g. "Call mom tomorrow #Personal !2".
+/// Quick add understands days, #projects, @tags and !priority, e.g. "Call mom tomorrow #Personal @phone !2".
 /// Times are deliberately not a thing: tasks belong to a day, never an hour.
 /// This is a port of web/src/lib/parse.ts and must stay in step with it.
 public enum QuickAdd {
@@ -32,12 +32,14 @@ public enum QuickAdd {
         public var day: DaySpec?
         public var priority: Int?
         public var project: ProjectSpec?
+        public var tags: [String]
 
-        public init(title: String, day: DaySpec? = nil, priority: Int? = nil, project: ProjectSpec? = nil) {
+        public init(title: String, day: DaySpec? = nil, priority: Int? = nil, project: ProjectSpec? = nil, tags: [String] = []) {
             self.title = title
             self.day = day
             self.priority = priority
             self.project = project
+            self.tags = tags
         }
     }
 
@@ -73,6 +75,8 @@ public enum QuickAdd {
 
     private static let projectPattern = regex("(^|\\s)#([\\p{L}\\p{N}][\\p{L}\\p{N}_-]*)", caseInsensitive: false)
     private static let priorityPattern = regex("(^|\\s)!([1-3])(?=\\s|$)", caseInsensitive: false)
+    /// A whole word starting with @, so "john@acme.com" stays in the title.
+    private static let tagPattern = regex("(^|\\s)@([\\p{L}\\p{N}][\\p{L}\\p{N}_-]*)(?=\\s|$)", caseInsensitive: false)
 
     private struct DayRule {
         let pattern: NSRegularExpression
@@ -150,9 +154,18 @@ public enum QuickAdd {
         (text as NSString).replacingCharacters(in: range, with: " ")
     }
 
-    public static func parse(_ input: String, today: Day, projects: [Project]) -> Result {
+    /// `tags` are the ones already in use, so "@Phone" reuses an existing "phone".
+    public static func parse(_ input: String, today: Day, projects: [Project], tags known: [String] = []) -> Result {
         var text = input
         var result = Result(title: "")
+
+        // Tags first, so "@today" stays a tag rather than a day.
+        var tags: [String] = []
+        while let match = firstMatch(tagPattern, in: text), let raw = match.groups[2] {
+            tags.append(Tags.existing(raw, in: known))
+            text = cut(text, match.range)
+        }
+        result.tags = Tags.cleaned(tags)
 
         if let match = firstMatch(projectPattern, in: text), let raw = match.groups[2] {
             let wanted = normalizeProjectName(raw)

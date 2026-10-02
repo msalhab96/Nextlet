@@ -83,6 +83,13 @@ enum Snapshots {
                 await render("mac-06-project", environment(MainWindow()), size: main, titled: true, into: output)
             }
 
+            if let tag = store.tagCounts.first(where: { $0.name == "phone" })?.name ?? store.tagCounts.first?.name {
+                store.route = .tag(tag)
+                store.select(store.taskList.first { $0.isOpen && Tags.contains($0.tags, tag) }?.id)
+                await render("mac-06b-tag", environment(MainWindow()), size: main, titled: true, into: output)
+                store.select(nil)
+            }
+
             store.route = .focus
             await render("mac-07-focus-picker", environment(MainWindow()), size: main, titled: true, into: output)
             if let next = store.nextUp {

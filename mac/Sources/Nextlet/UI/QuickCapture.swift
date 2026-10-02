@@ -41,7 +41,7 @@ struct QuickCaptureView: View {
 
     /// What quick add understood, with any choices made from the menus on top.
     private var result: QuickAdd.Result {
-        var result = QuickAdd.parse(text, today: store.today, projects: store.projects)
+        var result = QuickAdd.parse(text, today: store.today, projects: store.projects, tags: store.knownTags)
         switch dayChoice {
         case .parsed: break
         case .someday: result.day = .someday
@@ -59,6 +59,7 @@ struct QuickCaptureView: View {
     /// The day and project from the screen quick capture was opened on, unless overridden.
     private var defaultDay: Day? { panelState.captureDay }
     private var defaultProjectID: String? { projectChoice == .none ? nil : panelState.captureProjectID }
+    private var defaultTags: [String] { panelState.captureTags }
 
     var body: some View {
         let result = self.result
@@ -87,7 +88,7 @@ struct QuickCaptureView: View {
                     if result.day != nil || result.project != nil || result.priority != nil {
                         ParsedChips(parsed: result)
                     } else if text.isEmpty {
-                        (Text("Add details as you type: ") + Text("tomorrow #Home !1").font(Typo.mono(12)).foregroundColor(Palette.ink)
+                        (Text("Add details as you type: ") + Text("tomorrow #Home @phone !1").font(Typo.mono(12)).foregroundColor(Palette.ink)
                             + Text(", ") + Text("fri").font(Typo.mono(12)).foregroundColor(Palette.ink)
                             + Text(", ") + Text("next week").font(Typo.mono(12)).foregroundColor(Palette.ink)
                             + Text(" or ") + Text("someday").font(Typo.mono(12)).foregroundColor(Palette.ink))
@@ -147,7 +148,8 @@ struct QuickCaptureView: View {
                 .padding(.vertical, 6)
 
                 HStack(spacing: 10) {
-                    (Text("Lands in ") + Text(store.destination(of: result, defaultDay: defaultDay, defaultProjectID: defaultProjectID)).bold().foregroundColor(Palette.ink))
+                    (Text("Lands in ") + Text(store.destination(of: result, defaultDay: defaultDay, defaultProjectID: defaultProjectID)).bold().foregroundColor(Palette.ink)
+                        + Text(defaultTags.isEmpty ? "" : ", tagged ") + Text(defaultTags.joined(separator: ", ")).bold().foregroundColor(Palette.ink))
                         .font(Typo.sans(12.5))
                         .foregroundStyle(Palette.graphite)
                     Spacer()
@@ -318,6 +320,7 @@ struct QuickCaptureView: View {
         guard !result.title.isEmpty else { return }
         let day = defaultDay
         let projectID = defaultProjectID
+        let tags = defaultTags
         let destination = store.destination(of: result, defaultDay: day, defaultProjectID: projectID)
         let subtasks = showSubtasks
             ? subtasksText.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -325,7 +328,7 @@ struct QuickCaptureView: View {
         reset()
         focused = .title
         Task {
-            if await store.createFromQuickAdd(result, defaultDay: day, defaultProjectID: projectID, subtasks: subtasks) != nil {
+            if await store.createFromQuickAdd(result, defaultDay: day, defaultProjectID: projectID, defaultTags: tags, subtasks: subtasks) != nil {
                 confirmation = "“\(result.title)” added to \(destination)"
                 try? await Task.sleep(for: .seconds(3))
                 if confirmation?.contains(result.title) == true { confirmation = nil }

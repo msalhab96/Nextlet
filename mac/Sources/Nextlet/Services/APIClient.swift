@@ -182,4 +182,15 @@ struct APIClient: Sendable {
     }
 
     func deleteSubtask(id: String) async throws { try await send("DELETE", "/subtasks/\(id)") }
+
+    // MARK: Tags
+
+    private func tagPath(_ tag: String) -> String {
+        "/tags/" + (tag.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? tag)
+    }
+
+    /// Renames the tag on every task that has it, finished ones included.
+    func renameTag(_ tag: String, to name: String) async throws { try await send("PATCH", tagPath(tag), body: ["name": name]) }
+    /// Takes the tag off every task that has it.
+    func deleteTag(_ tag: String) async throws { try await send("DELETE", tagPath(tag)) }
 }

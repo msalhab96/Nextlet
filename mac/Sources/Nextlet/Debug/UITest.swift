@@ -317,6 +317,70 @@ enum UITest {
         store.route = .today
         await pause(0.6)
 
+        print("\nTags")
+        reselect(store, id)
+        await pause(0.6)
+        if let field = textField(window, placeholder: "Add a tag") {
+            let focused = await clickToEdit(window, field)
+            check("Clicking “Add a tag” lets you type", focused)
+            if focused {
+                typeText("ui-check, Second tag", in: window)
+                press(.return, in: window)
+                check("Typing tags and pressing Return adds them", await waitFor { task?.tags == ["ui-check", "Second tag"] }, task?.tags.joined(separator: ", ") ?? "-")
+            }
+        } else {
+            check("“Add a tag” field can be found", false)
+        }
+        await pause(0.5)
+        await pressButton(window, "Remove tag Second tag", check: "A tag’s × takes it off") { task?.tags == ["ui-check"] }
+        await pause(0.5)
+        if let point = pressable(window, "ui-check", prefix: true) {
+            click(window, at: point)
+            check("The tag is in the sidebar and opens its tasks", await waitFor { store.route == .tag("ui-check") })
+        } else {
+            check("The tag is in the sidebar", false)
+        }
+        await pause(0.8)
+        if store.route == .tag("ui-check"), let plus = pressable(window, "New Task") {
+            click(window, at: plus)
+            if let panel = await waitForWindow({ $0 is FloatingPanel }), await waitFor(2, until: { panel.isKeyWindow }) {
+                let title = "UI test tagged capture \(Int(Date().timeIntervalSince1970))"
+                typeText(title, in: panel)
+                press(.return, in: panel)
+                let added = await waitFor { store.tasks.values.contains { $0.title == title } }
+                let made = store.tasks.values.first { $0.title == title }
+                check("Inside a tag, + adds a task with that tag", added && made?.tags == ["ui-check"], made?.tags.joined(separator: ", ") ?? "not added")
+                created += store.tasks.values.filter { $0.title == title }.map(\.id)
+            } else {
+                check("Inside a tag, + opens quick capture", false)
+            }
+            AppEnvironment.shared.panels.hideCapture()
+            await pause(0.4)
+        }
+        store.route = .today
+        await pause(0.6)
+        if let plus = pressable(window, "New Task") {
+            click(window, at: plus)
+            if let panel = await waitForWindow({ $0 is FloatingPanel }), await waitFor(2, until: { panel.isKeyWindow }) {
+                let title = "UI test at-tag capture \(Int(Date().timeIntervalSince1970))"
+                typeText(title + " @ui-quick", in: panel)
+                press(.return, in: panel)
+                let added = await waitFor { store.tasks.values.contains { $0.title == title } }
+                let made = store.tasks.values.first { $0.title == title }
+                check("Typing @tag in quick capture tags the task", added && made?.tags == ["ui-quick"], made?.tags.joined(separator: ", ") ?? "not added")
+                created += store.tasks.values.filter { $0.title == title }.map(\.id)
+            }
+            AppEnvironment.shared.panels.hideCapture()
+            await pause(0.4)
+        }
+        let renamed = await store.renameTag("ui-check", to: "ui-checked")
+        check("Renaming a tag renames it on its tasks", renamed && task?.tags == ["ui-checked"])
+        let afterTags = Store(settings: settings)
+        await afterTags.load()
+        check("The server has the tags", afterTags.tasks[id]?.tags == ["ui-checked"], afterTags.tasks[id]?.tags.joined(separator: ", ") ?? "-")
+        store.route = .today
+        await pause(0.6)
+
         print("\nDeleting")
         reselect(store, id)
         await pause(0.5)

@@ -76,6 +76,8 @@ public struct TaskItem: Codable, Hashable, Identifiable, Sendable {
     public var estimateMinutes: Int?
     public var priority: Int
     public var `repeat`: RepeatRule?
+    /// Optional labels; most tasks have none.
+    public var tags: [String]
     public var sortOrder: Double
     public var completedAt: Date?
     public var completedFromDay: Day?
@@ -88,8 +90,9 @@ public struct TaskItem: Codable, Hashable, Identifiable, Sendable {
     public init(
         id: String, title: String, notes: String = "", projectId: String? = nil, day: Day? = nil,
         plannedDay: Day? = nil, estimateMinutes: Int? = nil, priority: Int = 0, repeat: RepeatRule? = nil,
-        sortOrder: Double = 0, completedAt: Date? = nil, completedFromDay: Day? = nil, postponedAt: Date? = nil,
-        nextOccurrenceId: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), subtasks: [Subtask] = []
+        tags: [String] = [], sortOrder: Double = 0, completedAt: Date? = nil, completedFromDay: Day? = nil,
+        postponedAt: Date? = nil, nextOccurrenceId: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(),
+        subtasks: [Subtask] = []
     ) {
         self.id = id
         self.title = title
@@ -100,6 +103,7 @@ public struct TaskItem: Codable, Hashable, Identifiable, Sendable {
         self.estimateMinutes = estimateMinutes
         self.priority = priority
         self.repeat = `repeat`
+        self.tags = tags
         self.sortOrder = sortOrder
         self.completedAt = completedAt
         self.completedFromDay = completedFromDay
@@ -108,6 +112,29 @@ public struct TaskItem: Codable, Hashable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.subtasks = subtasks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        notes = try container.decode(String.self, forKey: .notes)
+        projectId = try container.decodeIfPresent(String.self, forKey: .projectId)
+        day = try container.decodeIfPresent(Day.self, forKey: .day)
+        plannedDay = try container.decodeIfPresent(Day.self, forKey: .plannedDay)
+        estimateMinutes = try container.decodeIfPresent(Int.self, forKey: .estimateMinutes)
+        priority = try container.decode(Int.self, forKey: .priority)
+        self.repeat = try container.decodeIfPresent(RepeatRule.self, forKey: .repeat)
+        // A server from before tags simply has none to send.
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        sortOrder = try container.decode(Double.self, forKey: .sortOrder)
+        completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+        completedFromDay = try container.decodeIfPresent(Day.self, forKey: .completedFromDay)
+        postponedAt = try container.decodeIfPresent(Date.self, forKey: .postponedAt)
+        nextOccurrenceId = try container.decodeIfPresent(String.self, forKey: .nextOccurrenceId)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        subtasks = try container.decode([Subtask].self, forKey: .subtasks)
     }
 
     public var isOpen: Bool { completedAt == nil }
@@ -140,6 +167,7 @@ public enum TaskField: Sendable {
     case estimateMinutes(Int?)
     case priority(Int)
     case repeatRule(RepeatRule?)
+    case tags([String])
     case sortOrder(Double)
 
     public var key: String {
@@ -152,6 +180,7 @@ public enum TaskField: Sendable {
         case .estimateMinutes: return "estimateMinutes"
         case .priority: return "priority"
         case .repeatRule: return "repeat"
+        case .tags: return "tags"
         case .sortOrder: return "sortOrder"
         }
     }
@@ -164,6 +193,7 @@ public enum TaskField: Sendable {
         case .estimateMinutes(let value): return value ?? NSNull()
         case .priority(let value): return value
         case .repeatRule(let value): return value?.json ?? NSNull()
+        case .tags(let value): return value
         case .sortOrder(let value): return value
         }
     }
@@ -190,6 +220,7 @@ public enum TaskField: Sendable {
             case .estimateMinutes(let value): task.estimateMinutes = value
             case .priority(let value): task.priority = value
             case .repeatRule(let value): task.repeat = value
+            case .tags(let value): task.tags = Tags.cleaned(value)
             case .sortOrder(let value): task.sortOrder = value
             }
         }
@@ -206,6 +237,7 @@ public struct TaskDraft: Sendable {
     public var estimateMinutes: Int?
     public var priority: Int = 0
     public var `repeat`: RepeatRule?
+    public var tags: [String] = []
     public var sortOrder: Double?
     public var subtasks: [(title: String, done: Bool)] = []
 
@@ -224,6 +256,7 @@ public struct TaskDraft: Sendable {
         body["estimateMinutes"] = estimateMinutes ?? NSNull()
         body["repeat"] = self.repeat?.json ?? NSNull()
         if let sortOrder { body["sortOrder"] = sortOrder }
+        if !tags.isEmpty { body["tags"] = tags }
         if !subtasks.isEmpty { body["subtasks"] = subtasks.map { ["title": $0.title, "done": $0.done] } }
         return body
     }

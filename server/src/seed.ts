@@ -24,6 +24,7 @@ interface DemoTask {
   repeat?: (today: string) => RepeatRule;
   done?: boolean;
   subtasks?: [title: string, done?: boolean][];
+  tags?: string[];
 }
 
 const DEMO_TASKS: DemoTask[] = [
@@ -38,6 +39,7 @@ const DEMO_TASKS: DemoTask[] = [
   },
   {
     title: 'Reply to landlord about lease renewal',
+    tags: ['email'],
     project: 'Home',
     offset: 0,
     estimate: 10,
@@ -47,19 +49,20 @@ const DEMO_TASKS: DemoTask[] = [
   { title: 'Renew library books', project: 'Personal', offset: -2, estimate: 5, notes: 'Two books, both due this week.' },
   {
     title: 'Review slides for Monday planning',
+    tags: ['deep work'],
     project: 'Work',
     offset: 0,
     estimate: 30,
     priority: 2,
     subtasks: [['Check numbers on slide 4'], ['Tighten the summary']],
   },
-  { title: 'Pick up dry cleaning', project: 'Home', offset: 0, estimate: 15, priority: 3, notes: 'Ticket is in the car.' },
+  { title: 'Pick up dry cleaning', project: 'Home', offset: 0, estimate: 15, priority: 3, notes: 'Ticket is in the car.', tags: ['errands'] },
   { title: 'Read 20 pages', project: 'Personal', offset: 0, estimate: 20, repeat: () => ({ type: 'daily' }) },
-  { title: 'Book dentist appointment', project: 'Health', offset: 0, estimate: 5, priority: 3 },
+  { title: 'Book dentist appointment', project: 'Health', offset: 0, estimate: 5, priority: 3, tags: ['phone'] },
   { title: '30-minute run', project: 'Health', offset: 0, estimate: 30, done: true },
   { title: 'Water the plants', project: 'Home', offset: 0, estimate: 5, done: true },
   { title: '1:1 with manager', project: 'Work', offset: 1, estimate: 30 },
-  { title: 'Call mom', project: 'Personal', offset: 1, estimate: 20 },
+  { title: 'Call mom', project: 'Personal', offset: 1, estimate: 20, tags: ['phone'] },
   {
     title: 'Yoga class',
     project: 'Health',
@@ -67,7 +70,7 @@ const DEMO_TASKS: DemoTask[] = [
     estimate: 60,
     repeat: (today) => ({ type: 'weekly', days: [isoWeekday(addDays(today, 1))] }),
   },
-  { title: 'Farmers market', project: 'Home', offset: 2 },
+  { title: 'Farmers market', project: 'Home', offset: 2, tags: ['errands'] },
   { title: 'Clean out the garage', project: 'Home', offset: 2, estimate: 90 },
   { title: 'Meal prep for the week', project: 'Health', offset: 3, estimate: 60 },
   {
@@ -96,11 +99,11 @@ async function insertDemoTasks(tx: Queryable, today: string) {
     const day = task.offset === null ? null : addDays(today, task.offset);
     const plannedDay = task.plannedOffset !== undefined ? addDays(today, task.plannedOffset) : day;
     const inserted = await tx.query<{ id: string }>(
-      `INSERT INTO tasks (title, notes, project_id, day, planned_day, estimate_minutes, priority, repeat, sort_order, completed_at)
+      `INSERT INTO tasks (title, notes, project_id, day, planned_day, estimate_minutes, priority, repeat, sort_order, completed_at, tags)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9,
                CASE WHEN $10::boolean
                  THEN LEAST(now(), ($4::date + time '09:00') AT TIME ZONE 'UTC' + make_interval(mins => $11::int))
-               END)
+               END, $12::text[])
        RETURNING id`,
       [
         task.title,
@@ -114,6 +117,7 @@ async function insertDemoTasks(tx: Queryable, today: string) {
         index + 1,
         task.done ?? false,
         index * 7,
+        task.tags ?? [],
       ],
     );
     const taskId = inserted.rows[0]!.id;

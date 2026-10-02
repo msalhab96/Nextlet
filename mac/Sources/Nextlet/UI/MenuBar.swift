@@ -192,7 +192,7 @@ private struct MenuBarContent: View {
     }
 
     private func add() {
-        let parsed = QuickAdd.parse(draft, today: store.today, projects: store.projects)
+        let parsed = QuickAdd.parse(draft, today: store.today, projects: store.projects, tags: store.knownTags)
         guard !parsed.title.isEmpty else { return }
         draft = ""
         Task { await store.createFromQuickAdd(parsed, defaultDay: store.today) }

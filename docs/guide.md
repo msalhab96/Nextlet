@@ -19,6 +19,8 @@ Nextlet has three parts that share one server:
 - **Upcoming**: a week view where you push a task to the next day or drag it onto
   any day, plus a month calendar.
 - **Inbox** for tasks without a day, and **projects** with their own colours.
+- **Tags**: optional labels such as `phone` or `errands`, as many per task as you like.
+  Each tag gets its own list in the Mac app's sidebar.
 - **Quick add** understands plain language: `Call mom tomorrow #Personal !2`.
 - **Focus** sessions: a countdown for the task in front of you with its next step,
   "Start next" when you're done, and short breaks.
@@ -88,7 +90,12 @@ What's in it:
   resize it). Drag tasks onto sidebar items to reschedule them or change their
   project. Right-click any task for everything you can do with it.
 - **New task** (**+** in the toolbar or **⌘N**): opens quick capture filed under the
-  screen you're on, so a task added inside a project lands in that project.
+  screen you're on, so a task added inside a project lands in that project, and one
+  added inside a tag gets that tag.
+- **Tags**: add them in a task's details (type a few, separated by commas, or pick one
+  you already use), from its right-click menu, by dragging the task onto a tag in the
+  sidebar, or with `@tag` in quick add. Each tag's list can rename or remove the tag
+  everywhere. The web app keeps tags intact but doesn't show them yet.
 - **Menu bar extra**: today's next task (or the running focus clock) in the menu
   bar. Click it to start focus, complete, push to tomorrow and add tasks without
   opening the window.
@@ -142,6 +149,7 @@ Works in every "New task" field, in the web app's quick capture (**N**) and the 
 | `5 oct`, `oct 5th`, `2026-10-05`          | that date                                          |
 | `someday`                                 | no day; it goes to the Inbox                       |
 | `#Personal`, `#side-project`              | the project (a new one is created if needed)       |
+| `@phone`, `@deep-work`                    | tags, as many as you like (Mac app)                |
 | `!1`, `!2`, `!3`                          | priority high / medium / low                       |
 
 Short weekday names only count after "on" or at the end, so "Buy sun cream"
@@ -209,8 +217,8 @@ All endpoints are under `/api` and speak JSON. Days are `YYYY-MM-DD` strings.
 | `DELETE /projects/:id`           | Delete; its tasks are kept without a project                   |
 | `GET /tasks?status=open`         | Every open task                                                |
 | `GET /tasks?status=done&from&to` | Done tasks between two days                                    |
-| `GET /tasks?q=…`                 | Search titles and notes                                        |
-| `POST /tasks`                    | Create `{ title, day?, projectId?, estimateMinutes?, priority?, repeat?, notes?, subtasks? }` |
+| `GET /tasks?q=…`                 | Search titles, notes and tags; `q=@phone` finds that tag       |
+| `POST /tasks`                    | Create `{ title, day?, projectId?, estimateMinutes?, priority?, repeat?, tags?, notes?, subtasks? }` |
 | `PATCH /tasks/:id`               | Update any of those; setting `day` reschedules the task        |
 | `DELETE /tasks/:id`              | Delete                                                         |
 | `POST /tasks/:id/complete`       | Complete `{ today }`; returns the next occurrence if it repeats |
@@ -220,6 +228,8 @@ All endpoints are under `/api` and speak JSON. Days are `YYYY-MM-DD` strings.
 | `POST /tasks/:id/subtasks`       | Add a subtask `{ title }`                                      |
 | `PATCH /subtasks/:id`            | `{ title?, done? }`                                            |
 | `DELETE /subtasks/:id`           | Delete a subtask                                               |
+| `PATCH /tags/:tag`               | Rename a tag on every task `{ name }`                          |
+| `DELETE /tags/:tag`              | Take a tag off every task                                      |
 
 When `NEXTLET_PASSWORD` is set, everything except `/health` and `/auth/*` needs the
 session cookie or an `Authorization: Bearer <token>` header.

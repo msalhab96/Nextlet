@@ -60,6 +60,9 @@ struct TaskRow: View {
                         .foregroundStyle(Palette.muted)
                         .help("Repeats: \(rule.label)")
                 }
+                if !task.tags.isEmpty {
+                    TagList(tags: task.tags)
+                }
                 if showProject {
                     HStack(spacing: 5) {
                         ProjectDot(color: Color(projectHex: project?.color))
@@ -167,6 +170,19 @@ struct TaskMenuItems: View {
                 } label: {
                     if level == task.priority { Label(Format.priorityLabels[level], systemImage: "checkmark") } else { Text(Format.priorityLabels[level]) }
                 }
+            }
+        }
+        Menu("Tags") {
+            ForEach(store.knownTags, id: \.self) { tag in
+                let on = Tags.contains(task.tags, tag)
+                Button {
+                    Task { if on { await store.removeTag(task.id, tag) } else { await store.addTag(task.id, tag) } }
+                } label: {
+                    if on { Label(tag, systemImage: "checkmark") } else { Text(tag) }
+                }
+            }
+            if store.knownTags.isEmpty {
+                Text("Add tags in the task’s details, or type @tag in quick add")
             }
         }
         Menu("Project") {
@@ -299,6 +315,7 @@ struct AddTaskField: View {
     @Environment(Store.self) private var store
     var defaultDay: Day?
     var defaultProjectID: String?
+    var defaultTags: [String] = []
     var placeholder = "New task"
     var compact = false
     var onClose: (() -> Void)?
@@ -306,7 +323,7 @@ struct AddTaskField: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        let parsed = QuickAdd.parse(text, today: store.today, projects: store.projects)
+        let parsed = QuickAdd.parse(text, today: store.today, projects: store.projects, tags: store.knownTags)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "plus")
@@ -350,7 +367,7 @@ struct AddTaskField: View {
         let destination = store.destination(of: parsed, defaultDay: defaultDay, defaultProjectID: defaultProjectID)
         text = ""
         Task {
-            if await store.createFromQuickAdd(parsed, defaultDay: defaultDay, defaultProjectID: defaultProjectID) != nil, landsElsewhere {
+            if await store.createFromQuickAdd(parsed, defaultDay: defaultDay, defaultProjectID: defaultProjectID, defaultTags: defaultTags) != nil, landsElsewhere {
                 store.toast("“\(parsed.title)” added to \(destination)", icon: .check)
             }
         }

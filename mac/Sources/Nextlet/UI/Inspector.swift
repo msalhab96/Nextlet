@@ -316,6 +316,10 @@ struct TaskInspector: View {
                     }
                 }
             }
+            GridRow(alignment: .firstTextBaseline) {
+                Label("Tags", systemImage: "tag").font(Typo.sans(12.5)).foregroundStyle(Palette.muted)
+                TagEditor(task: task)
+            }
         }
     }
 
@@ -471,5 +475,55 @@ struct SubtaskRow: View {
             return
         }
         if value != subtask.title { Task { await store.updateSubtask(taskID, subtask.id, title: value) } }
+    }
+}
+
+/// The tags of a task: chips with an ×, a field for new ones and the ones already in use.
+struct TagEditor: View {
+    @Environment(Store.self) private var store
+    let task: TaskItem
+    @ViewState private var draft = ""
+
+    var body: some View {
+        let suggestions = store.knownTags.filter { !Tags.contains(task.tags, $0) }
+        FlowLayout(spacing: 6) {
+            ForEach(task.tags, id: \.self) { tag in
+                TagChip(name: tag) { Task { await store.removeTag(task.id, tag) } }
+            }
+            TextField(task.tags.isEmpty ? "Add a tag" : "Add", text: $draft)
+                .textFieldStyle(.plain)
+                .font(Typo.sans(12.5))
+                .frame(width: task.tags.isEmpty ? 120 : 64, height: 22)
+                .onSubmit(add)
+            if !suggestions.isEmpty {
+                Menu {
+                    ForEach(suggestions, id: \.self) { tag in
+                        Button(tag) { Task { await store.addTag(task.id, tag) } }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Palette.muted)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Add a tag you already use")
+                .accessibilityLabel("Tags in use")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Return adds what was typed; commas add several at once.
+    private func add() {
+        let names = draft.split(separator: ",").map { Tags.clean(String($0)) }.filter { !$0.isEmpty }
+        draft = ""
+        Task {
+            for name in names { await store.addTag(task.id, name) }
+        }
     }
 }

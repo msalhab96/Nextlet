@@ -178,6 +178,51 @@ describe.skipIf(!url)('Nextlet API', () => {
     expect(cotton.body).toHaveLength(2);
   });
 
+  it('keeps optional tags, tidied up, and finds tasks by tag', async () => {
+    const plain = await call('POST', '/tasks', { title: 'No tags here', day: TODAY });
+    expect(plain.body.tags).toEqual([]);
+
+    const tagged = await call('POST', '/tasks', { title: 'Call the bank', day: TODAY, tags: ['@Phone', ' phone ', 'deep   work', 'Errands'] });
+    expect(tagged.status).toBe(201);
+    expect(tagged.body.tags).toEqual(['Phone', 'deep work', 'Errands']);
+
+    const updated = await call('PATCH', `/tasks/${tagged.body.id}`, { tags: ['errands', 'Bank'] });
+    expect(updated.body.tags).toEqual(['errands', 'Bank']);
+    expect((await call('PATCH', `/tasks/${tagged.body.id}`, { tags: ['  '] })).status).toBe(400);
+    const tooMany = Array.from({ length: 21 }, (_, index) => `tag${index}`);
+    expect((await call('PATCH', `/tasks/${tagged.body.id}`, { tags: tooMany })).status).toBe(400);
+
+    const byTag = await call('GET', `/tasks?q=${encodeURIComponent('@ERRANDS')}`);
+    expect(byTag.body.map((task: { id: string }) => task.id)).toEqual([tagged.body.id]);
+    const byText = await call('GET', '/tasks?q=bank');
+    expect(byText.body.map((task: { id: string }) => task.id)).toContain(tagged.body.id);
+
+    const cleared = await call('PATCH', `/tasks/${tagged.body.id}`, { tags: [] });
+    expect(cleared.body.tags).toEqual([]);
+  });
+
+  it('carries tags over to the next occurrence of a repeating task', async () => {
+    const created = await call('POST', '/tasks', { title: 'Water the herbs', day: TODAY, repeat: { type: 'daily' }, tags: ['home'] });
+    const completed = await call('POST', `/tasks/${created.body.id}/complete`, { today: TODAY });
+    expect(completed.body.nextOccurrence.tags).toEqual(['home']);
+    expect(completed.body.nextOccurrence.day).toBe(TOMORROW);
+  });
+
+  it('renames and removes a tag on every task that has it', async () => {
+    const first = await call('POST', '/tasks', { title: 'Ring the plumber', day: TODAY, tags: ['Calls', 'home'] });
+    const second = await call('POST', '/tasks', { title: 'Ring the bank', day: TODAY, tags: ['calls'] });
+    await call('POST', `/tasks/${second.body.id}/complete`, { today: TODAY });
+
+    const renamed = await call('PATCH', `/tags/${encodeURIComponent('CALLS')}`, { name: 'phone' });
+    expect(renamed.body).toEqual({ name: 'phone', tasks: 2 });
+    expect((await call('GET', '/tasks?q=%40phone')).body.map((task: { id: string }) => task.id).sort()).toEqual([first.body.id, second.body.id].sort());
+
+    const removed = await call('DELETE', '/tags/phone');
+    expect(removed.body).toEqual({ tasks: 2 });
+    const open = await call('GET', '/tasks?status=open');
+    expect(open.body.find((task: { id: string }) => task.id === first.body.id).tags).toEqual(['home']);
+  });
+
   it('requires a range for done tasks', async () => {
     expect((await call('GET', '/tasks?status=done')).status).toBe(400);
     expect((await call('GET', `/tasks?status=done&from=${TOMORROW}&to=${TODAY}`)).status).toBe(400);

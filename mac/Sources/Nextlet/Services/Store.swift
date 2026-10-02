@@ -8,6 +8,7 @@ enum Route: Hashable {
     case upcoming
     case focus
     case project(String)
+    case tag(String)
 }
 
 enum UpcomingMode: String, CaseIterable, Identifiable {
@@ -599,7 +600,7 @@ final class Store {
 
     /// Creates the task described by quick-add text. Returns the new task's id.
     @discardableResult
-    func createFromQuickAdd(_ parsed: QuickAdd.Result, defaultDay: Day?, defaultProjectID: String? = nil, subtasks: [String] = []) async -> String? {
+    func createFromQuickAdd(_ parsed: QuickAdd.Result, defaultDay: Day?, defaultProjectID: String? = nil, defaultTags: [String] = [], subtasks: [String] = []) async -> String? {
         guard !parsed.title.isEmpty else { return nil }
         var projectID = defaultProjectID
         switch parsed.project {
@@ -614,6 +615,7 @@ final class Store {
         let day: Day? = parsed.day.map { $0.day } ?? defaultDay
         var draft = TaskDraft(title: parsed.title, projectId: projectID, day: day, priority: parsed.priority ?? 0)
         draft.subtasks = subtasks.map { (title: $0, done: false) }
+        draft.tags = Tags.cleaned(defaultTags + parsed.tags)
         return await createTask(draft)
     }
 
@@ -627,12 +629,81 @@ final class Store {
     }
 
     /// Where a new task goes unless you say otherwise: the screen you're looking at.
-    var newTaskDefaults: (day: Day?, projectID: String?) {
+    var newTaskDefaults: (day: Day?, projectID: String?, tags: [String]) {
         switch route {
-        case .today: return (today, projectFilter)
-        case .inbox: return (nil, projectFilter)
-        case .upcoming, .focus: return (today, nil)
-        case .project(let id): return (nil, id)
+        case .today: return (today, projectFilter, [])
+        case .inbox: return (nil, projectFilter, [])
+        case .upcoming, .focus: return (today, nil, [])
+        case .project(let id): return (nil, id, [])
+        case .tag(let name): return (nil, nil, [name])
+        }
+    }
+
+    // MARK: Tags
+
+    /// Tags on open tasks and how many open tasks have each, for the sidebar.
+    var tagCounts: [(name: String, count: Int)] {
+        var counts: [String: (name: String, count: Int)] = [:]
+        for task in tasks.values where task.isOpen {
+            for tag in task.tags { counts[tag.lowercased(), default: (tag, 0)].count += 1 }
+        }
+        return counts.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Every tag in use, open tasks first, for suggestions and quick add.
+    var knownTags: [String] {
+        let ordered = tasks.values.sorted { ($0.isOpen ? 0 : 1, $0.updatedAt) < ($1.isOpen ? 0 : 1, $1.updatedAt) }
+        return Tags.cleaned(ordered.flatMap(\.tags)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    func addTag(_ taskID: String, _ tag: String) async {
+        guard let task = tasks[currentID(taskID)] else { return }
+        let name = Tags.existing(Tags.clean(tag), in: knownTags)
+        guard !name.isEmpty, !Tags.contains(task.tags, name) else { return }
+        guard task.tags.count < Tags.maxCount else {
+            toast("A task can have up to \(Tags.maxCount) tags", icon: .error)
+            return
+        }
+        await updateTask(taskID, [.tags(task.tags + [name])])
+    }
+
+    func removeTag(_ taskID: String, _ tag: String) async {
+        guard let task = tasks[currentID(taskID)], Tags.contains(task.tags, tag) else { return }
+        await updateTask(taskID, [.tags(task.tags.filter { !Tags.same($0, tag) })])
+    }
+
+    /// Renames a tag on every task that has it. Returns whether it worked.
+    @discardableResult
+    func renameTag(_ tag: String, to newName: String) async -> Bool {
+        let name = Tags.clean(newName)
+        guard !name.isEmpty, name != tag else { return !name.isEmpty }
+        let ok = await retag(tag, failure: "Couldn’t rename the tag") { tags in tags.map { Tags.same($0, tag) ? name : $0 } } send: { api in
+            try await api.renameTag(tag, to: name)
+        }
+        if ok, case .tag(let current) = route, Tags.same(current, tag) { route = .tag(name) }
+        return ok
+    }
+
+    /// Takes a tag off every task that has it. Returns whether it worked.
+    @discardableResult
+    func deleteTag(_ tag: String) async -> Bool {
+        await retag(tag, failure: "Couldn’t remove the tag") { tags in tags.filter { !Tags.same($0, tag) } } send: { api in
+            try await api.deleteTag(tag)
+        }
+    }
+
+    private func retag(_ tag: String, failure: String, change: ([String]) -> [String], send: (APIClient) async throws -> Void) async -> Bool {
+        let affected = tasks.values.filter { Tags.contains($0.tags, tag) }
+        localVersion += 1
+        for task in affected { patch(task.id) { $0.tags = Tags.cleaned(change($0.tags)) } }
+        do {
+            let api = try self.api
+            try await track { try await send(api) }
+            return true
+        } catch {
+            put(affected)
+            failed(error, failure)
+            return false
         }
     }
 

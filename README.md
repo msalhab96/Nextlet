@@ -40,7 +40,7 @@
    ```
 
 3. **Plan your day**
-   - Press **+** or **⌘N** and type `Call mom tomorrow #Personal !2`: it sets the day, project and priority. Inside a project, new tasks land in that project.
+   - Press **+** or **⌘N** and type `Call mom tomorrow #Personal @phone !2`: it sets the day, project, tag and priority. Inside a project or tag, new tasks land there.
    - Didn't get to something? **⌘→** (or **Tomorrow**) moves it to the next day.
    - On the Mac, **⌥Space** captures a task from any app.
 

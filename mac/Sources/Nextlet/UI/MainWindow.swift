@@ -147,71 +147,88 @@ struct SidebarView: View {
                 NavRow(route: .focus, title: "Focus", icon: "scope", badge: focusBadge)
             }
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Projects")
-                    .font(Typo.sans(11, .semibold))
-                    .foregroundStyle(Palette.muted)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 4)
-                ForEach(store.projects) { project in
-                    NavRow(
-                        route: .project(project.id), title: project.name, color: Color(projectHex: project.color),
-                        count: counts.byProject[project.id] ?? 0
-                    )
-                    .contextMenu {
-                        Button("Rename…") {
-                            renameText = project.name
-                            renaming = project
-                        }
-                        Menu("Colour") {
-                            ForEach(Palette.projectColors, id: \.self) { hex in
-                                Button {
-                                    Task { await store.updateProject(project.id, color: hex) }
-                                } label: {
-                                    Label { Text(hex) } icon: { Image(nsImage: swatchImage(hex)) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Projects")
+                            .font(Typo.sans(11, .semibold))
+                            .foregroundStyle(Palette.muted)
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 4)
+                        ForEach(store.projects) { project in
+                            NavRow(
+                                route: .project(project.id), title: project.name, color: Color(projectHex: project.color),
+                                count: counts.byProject[project.id] ?? 0
+                            )
+                            .contextMenu {
+                                Button("Rename…") {
+                                    renameText = project.name
+                                    renaming = project
                                 }
+                                Menu("Colour") {
+                                    ForEach(Palette.projectColors, id: \.self) { hex in
+                                        Button {
+                                            Task { await store.updateProject(project.id, color: hex) }
+                                        } label: {
+                                            Label { Text(hex) } icon: { Image(nsImage: swatchImage(hex)) }
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button("Delete…", role: .destructive) { deleting = project }
                             }
                         }
-                        Divider()
-                        Button("Delete…", role: .destructive) { deleting = project }
-                    }
-                }
-                if creatingProject {
-                    HStack(spacing: 9) {
-                        ProjectDot(color: Palette.noProject, size: 9).padding(.horizontal, 3.5)
-                        TextField("Project name", text: $newProjectName)
-                            .textFieldStyle(.plain)
-                            .font(Typo.sans(13))
-                            .focused($newProjectFocused)
-                            .onSubmit(createProject)
-                            .onExitCommand { cancelProject() }
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(height: 30)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Palette.surface))
-                    .onAppear { newProjectFocused = true }
-                    .onChange(of: newProjectFocused) { if !newProjectFocused { createProject() } }
-                } else {
-                    Button {
-                        newProjectName = ""
-                        creatingProject = true
-                    } label: {
-                        HStack(spacing: 9) {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .semibold)).frame(width: 16)
-                            Text("New project")
-                            Spacer()
+                        if creatingProject {
+                            HStack(spacing: 9) {
+                                ProjectDot(color: Palette.noProject, size: 9).padding(.horizontal, 3.5)
+                                TextField("Project name", text: $newProjectName)
+                                    .textFieldStyle(.plain)
+                                    .font(Typo.sans(13))
+                                    .focused($newProjectFocused)
+                                    .onSubmit(createProject)
+                                    .onExitCommand { cancelProject() }
+                            }
+                            .padding(.horizontal, 10)
+                            .frame(height: 30)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Palette.surface))
+                            .onAppear { newProjectFocused = true }
+                            .onChange(of: newProjectFocused) { if !newProjectFocused { createProject() } }
+                        } else {
+                            Button {
+                                newProjectName = ""
+                                creatingProject = true
+                            } label: {
+                                HStack(spacing: 9) {
+                                    Image(systemName: "plus").font(.system(size: 12, weight: .semibold)).frame(width: 16)
+                                    Text("New project")
+                                    Spacer()
+                                }
+                                .font(Typo.sans(13))
+                                .foregroundStyle(Palette.muted)
+                                .padding(.horizontal, 10)
+                                .frame(height: 30)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .font(Typo.sans(13))
-                        .foregroundStyle(Palette.muted)
-                        .padding(.horizontal, 10)
-                        .frame(height: 30)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    if !store.tagCounts.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Tags")
+                                .font(Typo.sans(11, .semibold))
+                                .foregroundStyle(Palette.muted)
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, 4)
+                            ForEach(store.tagCounts, id: \.name) { tag in
+                                NavRow(route: .tag(tag.name), title: tag.name, icon: "tag", count: tag.count)
+                            }
+                        }
+                    }
                 }
             }
+            .scrollIndicators(.automatic)
+            .frame(maxHeight: .infinity, alignment: .top)
 
-            Spacer(minLength: 0)
 
             HStack(spacing: 4) {
                 SyncStatusView()
@@ -337,6 +354,7 @@ struct NavRow: View {
             case .inbox: Task { await store.rescheduleTask(id, to: nil) }
             case .today: Task { await store.rescheduleTask(id, to: store.today) }
             case .project(let projectID): Task { await store.updateTask(id, [.projectId(projectID)]) }
+            case .tag(let name): Task { await store.addTag(id, name) }
             case .upcoming, .focus: return false
             }
             return true
@@ -381,6 +399,7 @@ struct ContentRouter: View {
                 case .upcoming: UpcomingView()
                 case .focus: FocusPane()
                 case .project(let id): ProjectView(projectID: id)
+                case .tag(let name): TagView(tag: name)
                 }
             }
         }

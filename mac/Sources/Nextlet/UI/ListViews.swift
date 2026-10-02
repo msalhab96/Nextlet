@@ -674,6 +674,103 @@ struct ProjectView: View {
     }
 }
 
+// MARK: Tags
+
+struct TagView: View {
+    @Environment(Store.self) private var store
+    let tag: String
+    @ViewState private var renaming = false
+    @ViewState private var renameText = ""
+    @ViewState private var removing = false
+
+    var body: some View {
+        let today = store.today
+        let all = store.taskList.filter { Tags.contains($0.tags, tag) }
+        let open = all.filter(\.isOpen)
+        let shownDay = { (task: TaskItem) in TaskRules.effectiveDay(task, today: today) }
+        let todayList = open.filter { shownDay($0) == today }.sorted(by: TaskRules.bySortOrder)
+        let later = open.filter { (shownDay($0).map { $0 > today }) ?? false }
+            .sorted { (shownDay($0)!, $0.sortOrder) < (shownDay($1)!, $1.sortOrder) }
+        let noDay = open.filter { $0.day == nil }.sorted(by: TaskRules.bySortOrder)
+        let recentlyDone = all.filter { !$0.isOpen }
+            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            .prefix(5)
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if open.isEmpty && recentlyDone.isEmpty {
+                    EmptyCard(title: "No tasks tagged “\(tag)”.", message: "Add one below, or type @\(tag.replacingOccurrences(of: " ", with: "-")) in any quick add.")
+                }
+                if !todayList.isEmpty {
+                    TaskSection(title: "Today", count: "\(todayList.count)", tasks: todayList)
+                }
+                if !later.isEmpty {
+                    TaskSection(title: "Coming up", count: "\(later.count)", tasks: later, showDay: true)
+                }
+                if !noDay.isEmpty {
+                    TaskSection(title: "No day yet", count: "\(noDay.count)", tasks: noDay, action: .doToday)
+                }
+                if !recentlyDone.isEmpty {
+                    TaskSection(title: "Recently done", tasks: Array(recentlyDone), showDay: true)
+                }
+                AddTaskField(defaultDay: nil, defaultTags: [tag], placeholder: "Add a task tagged \(tag)")
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .padding(.bottom, 28)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 8) {
+                    Image(systemName: "tag").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.muted)
+                    ToolbarTitle(title: tag, subtitle: Format.plural(open.count, "open task"))
+                }
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                Menu {
+                    Button("Rename…") {
+                        renameText = tag
+                        renaming = true
+                    }
+                    Divider()
+                    Button("Remove Tag…", role: .destructive) { removing = true }
+                } label: {
+                    Label("Tag Options", systemImage: "ellipsis.circle")
+                }
+                .help("Rename or remove this tag")
+                NewTaskButton()
+                InspectorToggle()
+            }
+        }
+        .alert("Rename tag", isPresented: $renaming) {
+            TextField("Name", text: $renameText)
+            Button("Rename") {
+                let name = renameText
+                Task { await store.renameTag(tag, to: name) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every task tagged “\(tag)” gets the new name.")
+        }
+        .confirmationDialog("Remove the tag “\(tag)”?", isPresented: $removing) {
+            Button("Remove Tag", role: .destructive) {
+                Task {
+                    if await store.deleteTag(tag) {
+                        store.route = .today
+                        store.toast("Removed the tag “\(tag)”")
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The tasks stay; only the tag comes off them.")
+        }
+        .onChange(of: visibleIDs([todayList, later, noDay, Array(recentlyDone)]), initial: true) { _, ids in
+            store.visibleOrder = ids
+        }
+    }
+}
+
 // MARK: Search
 
 struct SearchResultsView: View {
@@ -711,7 +808,7 @@ struct SearchResultsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                ToolbarTitle(title: "Search", subtitle: "Titles and notes, including finished tasks")
+                ToolbarTitle(title: "Search", subtitle: "Titles, notes and tags (@phone), including finished tasks")
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 NewTaskButton()

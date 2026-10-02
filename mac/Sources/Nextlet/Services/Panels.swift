@@ -11,6 +11,7 @@ final class PanelState {
     /// Where quick capture files a task unless you say otherwise, set each time it opens.
     var captureDay: Day?
     var captureProjectID: String?
+    var captureTags: [String] = []
     var focusTimerVisible = false
     var focusTimerPinned = true
     /// False when another app already owns the chosen quick capture shortcut.
@@ -49,9 +50,10 @@ final class PanelManager: NSObject, NSWindowDelegate {
         // From anywhere else it goes to the Inbox.
         let window = env.mainWindow
         let defaults = window?.isVisible == true && window?.isMiniaturized == false
-            ? env.store.newTaskDefaults : (day: nil, projectID: nil)
+            ? env.store.newTaskDefaults : (day: nil, projectID: nil, tags: [])
         env.panelState.captureDay = defaults.day
         env.panelState.captureProjectID = defaults.projectID
+        env.panelState.captureTags = defaults.tags
         env.panelState.captureToken += 1
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         if let visible = screen?.visibleFrame {

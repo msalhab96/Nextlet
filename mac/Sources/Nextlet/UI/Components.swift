@@ -288,6 +288,9 @@ struct ParsedChips: View {
                     projectChip("New project: \(name)", color: Palette.noProject)
                 }
             }
+            ForEach(parsed.tags, id: \.self) { tag in
+                chip(icon: "tag", text: tag, foreground: Palette.graphite, background: Palette.chip)
+            }
             if let priority = parsed.priority {
                 chip(
                     icon: "flag.fill", text: Format.priorityLabels[priority],
@@ -422,5 +425,100 @@ struct WindowAccessor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async { onWindow(nsView.window) }
+    }
+}
+
+// MARK: Tags
+
+/// A small tag label. With `onRemove` it gets an × for taking the tag off.
+struct TagChip: View {
+    let name: String
+    var compact = false
+    var onRemove: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(name).lineLimit(1)
+            if let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .frame(width: 14, height: 14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Remove this tag")
+                .accessibilityLabel("Remove tag \(name)")
+            }
+        }
+        .font(Typo.sans(compact ? 11.5 : 12, .medium))
+        .foregroundStyle(Palette.graphite)
+        .padding(.leading, compact ? 6 : 8)
+        .padding(.trailing, onRemove == nil ? (compact ? 6 : 8) : 3)
+        .frame(height: compact ? 18 : 22)
+        .background(Capsule().fill(Palette.chip))
+    }
+}
+
+/// A row's tags: the first couple, then "+3".
+struct TagList: View {
+    let tags: [String]
+    var limit = 2
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(tags.prefix(limit), id: \.self) { TagChip(name: $0, compact: true) }
+            if tags.count > limit {
+                Text("+\(tags.count - limit)").font(Typo.sans(11.5, .medium)).foregroundStyle(Palette.muted)
+            }
+        }
+        .help(tags.joined(separator: ", "))
+    }
+}
+
+/// Lays views out in rows, wrapping onto the next line when a row is full.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, width: proposal.width ?? .infinity)
+        let width = rows.map(\.width).max() ?? 0
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), anchor: .topLeading, proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = [Row()]
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            if !rows[rows.count - 1].indices.isEmpty, rows[rows.count - 1].width + spacing + size.width > width {
+                rows.append(Row())
+            }
+            var row = rows[rows.count - 1]
+            row.width += (row.indices.isEmpty ? 0 : spacing) + size.width
+            row.height = max(row.height, size.height)
+            row.indices.append(index)
+            rows[rows.count - 1] = row
+        }
+        return rows.filter { !$0.indices.isEmpty }
     }
 }

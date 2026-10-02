@@ -18,6 +18,7 @@ export interface TaskDto {
   estimateMinutes: number | null;
   priority: number;
   repeat: RepeatRule | null;
+  tags: string[];
   sortOrder: number;
   completedAt: string | null;
   completedFromDay: string | null;
@@ -38,6 +39,7 @@ export interface TaskRow {
   estimate_minutes: number | null;
   priority: number;
   repeat: RepeatRule | null;
+  tags: string[];
   sort_order: number;
   completed_at: Date | null;
   completed_from_day: string | null;
@@ -70,6 +72,7 @@ export function toTaskDto(row: TaskRow & { subtasks: SubtaskDto[] }): TaskDto {
     estimateMinutes: row.estimate_minutes,
     priority: row.priority,
     repeat: row.repeat,
+    tags: row.tags,
     sortOrder: row.sort_order,
     completedAt: row.completed_at?.toISOString() ?? null,
     completedFromDay: row.completed_from_day,

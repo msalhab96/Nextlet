@@ -4,6 +4,7 @@ import type { Database, Queryable } from '../db.js';
 import { badRequest, notFound } from '../http.js';
 import { addDays, isValidDay, laterDay } from '../lib/dates.js';
 import { nextOccurrence, repeatRuleSchema, type RepeatRule } from '../lib/repeat.js';
+import { MAX_TAG_LENGTH, MAX_TAGS, normalizeTag, normalizeTags, sameTag } from '../lib/tags.js';
 import { findTask, findTasks } from '../lib/tasks.js';
 
 const daySchema = z.string().refine(isValidDay, 'Expected a calendar date as YYYY-MM-DD');
@@ -14,6 +15,14 @@ const notesSchema = z.string().max(20_000);
 const estimateSchema = z.number().int().min(1).max(1440).nullable();
 const prioritySchema = z.number().int().min(0).max(3);
 const subtaskInput = z.strictObject({ title: titleSchema, done: z.boolean().optional() });
+const tagSchema = z
+  .string()
+  .transform(normalizeTag)
+  .pipe(z.string().min(1, 'Tags can’t be empty').max(MAX_TAG_LENGTH, `Keep tags under ${MAX_TAG_LENGTH} characters`));
+const tagsSchema = z
+  .array(tagSchema)
+  .transform(normalizeTags)
+  .pipe(z.array(z.string()).max(MAX_TAGS, `A task can have up to ${MAX_TAGS} tags`));
 
 const createTaskBody = z.strictObject({
   title: titleSchema,
@@ -24,6 +33,7 @@ const createTaskBody = z.strictObject({
   estimateMinutes: estimateSchema.optional(),
   priority: prioritySchema.optional(),
   repeat: repeatRuleSchema.nullable().optional(),
+  tags: tagsSchema.optional(),
   sortOrder: z.number().optional(),
   subtasks: z.array(subtaskInput).max(100).optional(),
 });
@@ -38,9 +48,13 @@ const updateTaskBody = z
     estimateMinutes: estimateSchema.optional(),
     priority: prioritySchema.optional(),
     repeat: repeatRuleSchema.nullable().optional(),
+    tags: tagsSchema.optional(),
     sortOrder: z.number().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, 'Nothing to update');
+
+const tagParams = z.object({ tag: tagSchema });
+const renameTagBody = z.strictObject({ name: tagSchema });
 
 const listQuery = z.object({
   status: z.enum(['open', 'done']).default('open'),
@@ -89,18 +103,46 @@ async function insertSubtasks(tx: Queryable, taskId: string, subtasks: { title: 
   }
 }
 
+/** Changes the tags of every task that has `tag`, finished ones included. Returns how many changed. */
+async function retag(db: Database, tag: string, change: (tags: string[]) => string[]): Promise<number> {
+  return db.transaction(async (tx) => {
+    const { rows } = await tx.query<{ id: string; tags: string[] }>(
+      'SELECT id, tags FROM tasks WHERE EXISTS (SELECT 1 FROM unnest(tags) AS tag WHERE lower(tag) = lower($1)) FOR UPDATE',
+      [tag],
+    );
+    for (const row of rows) {
+      await tx.query('UPDATE tasks SET tags = $2::text[], updated_at = now() WHERE id = $1', [row.id, normalizeTags(change(row.tags))]);
+    }
+    return rows.length;
+  });
+}
+
 export function registerTaskRoutes(app: FastifyInstance, db: Database) {
+  // Renaming or removing a tag applies to every task that has it.
+  app.patch('/tags/:tag', async (request) => {
+    const { tag } = tagParams.parse(request.params);
+    const { name } = renameTagBody.parse(request.body);
+    const tasks = await retag(db, tag, (tags) => tags.map((existing) => (sameTag(existing, tag) ? name : existing)));
+    return { name, tasks };
+  });
+
+  app.delete('/tags/:tag', async (request) => {
+    const { tag } = tagParams.parse(request.params);
+    const tasks = await retag(db, tag, (tags) => tags.filter((existing) => !sameTag(existing, tag)));
+    return { tasks };
+  });
+
   app.get('/tasks', async (request) => {
     const query = listQuery.parse(request.query);
 
     if (query.q) {
+      const order = 'ORDER BY (t.completed_at IS NOT NULL), t.updated_at DESC LIMIT 30';
+      const tag = query.q.startsWith('@') ? normalizeTag(query.q) : '';
+      if (tag) {
+        return findTasks(db, 'EXISTS (SELECT 1 FROM unnest(t.tags) AS tag WHERE lower(tag) = lower($1))', [tag], order);
+      }
       const pattern = `%${query.q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-      return findTasks(
-        db,
-        '(t.title ILIKE $1 OR t.notes ILIKE $1)',
-        [pattern],
-        'ORDER BY (t.completed_at IS NOT NULL), t.updated_at DESC LIMIT 30',
-      );
+      return findTasks(db, "(t.title ILIKE $1 OR t.notes ILIKE $1 OR array_to_string(t.tags, ' ') ILIKE $1)", [pattern], order);
     }
 
     if (query.status === 'open') {
@@ -123,9 +165,9 @@ export function registerTaskRoutes(app: FastifyInstance, db: Database) {
     const task = await db.transaction(async (tx) => {
       const day = body.day ?? null;
       const { rows } = await tx.query<{ id: string }>(
-        `INSERT INTO tasks (title, notes, project_id, day, planned_day, estimate_minutes, priority, repeat, sort_order)
+        `INSERT INTO tasks (title, notes, project_id, day, planned_day, estimate_minutes, priority, repeat, sort_order, tags)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb,
-                 COALESCE($9::double precision, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks)))
+                 COALESCE($9::double precision, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM tasks)), $10::text[])
          RETURNING id`,
         [
           body.title,
@@ -137,6 +179,7 @@ export function registerTaskRoutes(app: FastifyInstance, db: Database) {
           body.priority ?? 0,
           repeatParam(body.repeat),
           body.sortOrder ?? null,
+          body.tags ?? [],
         ],
       );
       const id = rows[0]!.id;
@@ -163,6 +206,7 @@ export function registerTaskRoutes(app: FastifyInstance, db: Database) {
     if (body.estimateMinutes !== undefined) assign('estimate_minutes', body.estimateMinutes);
     if (body.priority !== undefined) assign('priority', body.priority);
     if (body.repeat !== undefined) assign('repeat', repeatParam(body.repeat), '::jsonb');
+    if (body.tags !== undefined) assign('tags', body.tags, '::text[]');
     if (body.sortOrder !== undefined) assign('sort_order', body.sortOrder);
     if (body.day !== undefined) {
       // Picking a day is a deliberate plan, so the task stops counting as carried over.
@@ -207,8 +251,8 @@ export function registerTaskRoutes(app: FastifyInstance, db: Database) {
         const scheduled = current.day ?? today;
         const nextDay = nextOccurrence(current.repeat, laterDay(scheduled, today), scheduled);
         const inserted = await tx.query<{ id: string }>(
-          `INSERT INTO tasks (title, notes, project_id, day, planned_day, estimate_minutes, priority, repeat, sort_order)
-           SELECT title, notes, project_id, $2, $2, estimate_minutes, priority, repeat, sort_order
+          `INSERT INTO tasks (title, notes, project_id, day, planned_day, estimate_minutes, priority, repeat, sort_order, tags)
+           SELECT title, notes, project_id, $2, $2, estimate_minutes, priority, repeat, sort_order, tags
            FROM tasks WHERE id = $1
            RETURNING id`,
           [id, nextDay],
