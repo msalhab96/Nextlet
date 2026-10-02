@@ -26,21 +26,22 @@
 
 ## Quick start
 
-1. **Start Nextlet** (needs [Docker](https://docs.docker.com/get-docker/)), then open <http://localhost:8080>:
+1. **Start the server** (needs [Docker](https://docs.docker.com/get-docker/)):
 
    ```bash
-   docker compose up -d
+   docker compose up -d                  # the server, for the Mac app
+   docker compose --profile web up -d    # …plus the web app on http://localhost:8081
    ```
 
-2. **Add the Mac app** (optional, macOS 15+ with the Xcode Command Line Tools):
+2. **Build and open the Mac app** (macOS 15+ with the Xcode Command Line Tools):
 
    ```bash
    cd mac && ./scripts/build-app.sh && open build/Nextlet.app
    ```
 
 3. **Plan your day**
-   - Type `Call mom tomorrow #Personal !2` in **New task**: it sets the day, project and priority.
+   - Press **+** or **⌘N** and type `Call mom tomorrow #Personal !2`: it sets the day, project and priority. Inside a project, new tasks land in that project.
    - Didn't get to something? **⌘→** (or **Tomorrow**) moves it to the next day.
    - On the Mac, **⌥Space** captures a task from any app.
 
-Password protection, settings, shortcuts, the API and development are in the [guide](docs/guide.md).
+Password protection, settings, shortcuts, starting at login, the API and development are in the [guide](docs/guide.md).

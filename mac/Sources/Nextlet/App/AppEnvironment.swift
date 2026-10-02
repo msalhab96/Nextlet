@@ -6,7 +6,13 @@ import SwiftUI
 /// Owns the shared objects: settings, store, focus timer and panels.
 @MainActor
 final class AppEnvironment {
-    static let shared = AppEnvironment()
+    static private(set) var shared = AppEnvironment()
+
+    /// A fresh environment with its own preferences, so the UI test never touches the app's.
+    static func isolated(defaults: UserDefaults) -> AppEnvironment {
+        shared = AppEnvironment(defaults: defaults)
+        return shared
+    }
 
     let settings: AppSettings
     let store: Store
@@ -21,12 +27,13 @@ final class AppEnvironment {
 
     private var keyMonitor: Any?
     private var refreshTimer: Timer?
+    private var retryTimer: Timer?
     private var started = false
 
-    private init() {
-        settings = AppSettings()
+    private init(defaults: UserDefaults = .standard) {
+        settings = AppSettings(defaults: defaults)
         store = Store(settings: settings)
-        focus = FocusController()
+        focus = FocusController(defaults: defaults)
         focus.onTimeUp = { [weak self] in self?.timeUp() }
     }
 
@@ -42,7 +49,7 @@ final class AppEnvironment {
         center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 self.store.updateToday()
-                Task { await self.store.refresh() }
+                if !self.retryIfDisconnected() { Task { await self.store.refresh() } }
             }
         }
         center.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { _ in
@@ -56,9 +63,27 @@ final class AppEnvironment {
         }
         RunLoop.main.add(timer, forMode: .common)
         refreshTimer = timer
+        // Until the server answers (after a reboot Docker can take a minute), try again every few seconds.
+        let retry = Timer(timeInterval: 5, repeats: true) { _ in
+            MainActor.assumeIsolated { _ = self.retryIfDisconnected() }
+        }
+        RunLoop.main.add(retry, forMode: .common)
+        retryTimer = retry
+        if !settings.loginItemConfigured {
+            settings.loginItemConfigured = true
+            LoginItem.set(true)
+        }
 
         Task { await store.load() }
         if focus.session != nil, settings.showFloatingTimer { panels.showFocusTimer() }
+    }
+
+    /// Reconnects quietly when the server couldn't be reached. Returns whether it tried.
+    @discardableResult
+    func retryIfDisconnected() -> Bool {
+        guard case .failed = store.phase else { return false }
+        Task { await store.load(quietly: true) }
+        return true
     }
 
     func registerHotKey() {
@@ -81,12 +106,9 @@ final class AppEnvironment {
         showMainWindow()
     }
 
-    /// ⌘N: focus the "New task" field of the list on screen.
+    /// ⌘N and the + button: quick capture, filed under the screen you're on.
     func newTask() {
-        if store.route == .focus { store.route = .today }
-        store.searchText = ""
-        store.newTaskRequest += 1
-        showMainWindow()
+        panels.showCapture()
     }
 
     func focusSearch() {

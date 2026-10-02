@@ -19,6 +19,9 @@ services:
   api:
     build: ./server
     restart: unless-stopped
+    ports:
+      # This machine only by default. Set NEXTLET_PASSWORD before opening it up.
+      - "${NEXTLET_BIND:-127.0.0.1}:${NEXTLET_PORT:-8080}:3000"
     environment:
       DATABASE_URL: postgres://nextlet:${POSTGRES_PASSWORD:-nextlet}@db:5432/nextlet
       SEED_DEMO: ${SEED_DEMO:-false}
@@ -30,12 +33,13 @@ services:
       db:
         condition: service_healthy
 
+  # The web app runs only when asked: docker compose --profile web up -d
   web:
     build: ./web
+    profiles: ["web"]
     restart: unless-stopped
     ports:
-      # This machine only by default. Set NEXTLET_PASSWORD before opening it up.
-      - "${NEXTLET_BIND:-127.0.0.1}:${NEXTLET_PORT:-8080}:80"
+      - "${NEXTLET_BIND:-127.0.0.1}:${NEXTLET_WEB_PORT:-8081}:80"
     depends_on:
       api:
         condition: service_healthy

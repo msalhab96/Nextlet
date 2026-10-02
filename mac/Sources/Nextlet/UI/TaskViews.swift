@@ -300,8 +300,6 @@ struct AddTaskField: View {
     var defaultDay: Day?
     var defaultProjectID: String?
     var placeholder = "New task"
-    /// Focus this field when ⌘N is pressed.
-    var answersNewTask = true
     var compact = false
     var onClose: (() -> Void)?
     @ViewState private var text = ""
@@ -324,9 +322,6 @@ struct AddTaskField: View {
                         text = ""
                         focused = false
                     }
-                if !compact, !focused, answersNewTask {
-                    Text("⌘N").font(Typo.mono(11)).foregroundStyle(Palette.muted)
-                }
             }
             .padding(.horizontal, 10)
             .frame(height: compact ? 30 : 34)
@@ -341,9 +336,6 @@ struct AddTaskField: View {
             if !text.trimmingCharacters(in: .whitespaces).isEmpty {
                 ParsedChips(parsed: parsed).padding(.leading, 4)
             }
-        }
-        .onChange(of: store.newTaskRequest) {
-            if answersNewTask { focused = true }
         }
         .onAppear {
             if compact { focused = true }

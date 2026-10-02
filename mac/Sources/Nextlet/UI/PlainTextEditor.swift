@@ -1,13 +1,16 @@
 import AppKit
 import SwiftUI
 
-/// The notes box: a plain AppKit text view that grows with its text.
-/// SwiftUI's TextEditor doesn't reliably take clicks inside the details column, so this is used instead.
-struct NotesEditor: NSViewRepresentable {
+/// A multi-line text box (task notes, quick capture's subtasks): a plain AppKit text view that
+/// grows with its text. SwiftUI's TextEditor doesn't reliably take clicks in Nextlet's layout.
+struct PlainTextEditor: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
+    var fontSize: CGFloat = 13
     var minHeight: CGFloat = 90
     var maxHeight: CGFloat = 320
+    /// Bump to put the cursor in the box.
+    var focusRequest = 0
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -16,7 +19,7 @@ struct NotesEditor: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.string = text
         textView.placeholder = placeholder
-        textView.font = FontBook.sansNSFont(13)
+        textView.font = FontBook.sansNSFont(fontSize)
         textView.textColor = NSColor(Palette.ink2)
         textView.insertionPointColor = NSColor(Palette.indigo)
         textView.placeholderColor = NSColor(Palette.faint)
@@ -34,7 +37,7 @@ struct NotesEditor: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.setAccessibilityLabel("Notes")
+        textView.setAccessibilityLabel(placeholder)
 
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
@@ -42,7 +45,13 @@ struct NotesEditor: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.documentView = textView
+        context.coordinator.focusRequest = focusRequest
+        if focusRequest > 0 { focusSoon(textView) }
         return scrollView
+    }
+
+    private func focusSoon(_ textView: NSTextView) {
+        DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -54,6 +63,10 @@ struct NotesEditor: NSViewRepresentable {
             textView.needsDisplay = true
         }
         textView.placeholder = placeholder
+        if context.coordinator.focusRequest != focusRequest {
+            context.coordinator.focusRequest = focusRequest
+            focusSoon(textView)
+        }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView scrollView: NSScrollView, context: Context) -> CGSize? {
@@ -69,9 +82,10 @@ struct NotesEditor: NSViewRepresentable {
     }
 
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: NotesEditor
+        var parent: PlainTextEditor
+        var focusRequest = 0
 
-        init(_ parent: NotesEditor) { self.parent = parent }
+        init(_ parent: PlainTextEditor) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }

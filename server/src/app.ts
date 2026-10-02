@@ -13,7 +13,7 @@ export interface AppOptions {
 }
 
 export function buildApp({ db, auth = new Auth({ password: '' }), logger = true }: AppOptions) {
-  const app = Fastify({ logger, trustProxy: true, bodyLimit: 1024 * 1024 });
+  const app = Fastify({ logger, trustProxy: false, bodyLimit: 1024 * 1024 });
 
   app.setErrorHandler(errorHandler);
   app.setNotFoundHandler((request, reply) =>

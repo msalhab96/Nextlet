@@ -22,6 +22,7 @@ enum SelfTest {
         Task { @MainActor in
             let failures = await execute(store: store, focus: focus, password: password)
             defaults.removePersistentDomain(forName: suiteName)
+            print("\nOpen at login: \(LoginItem.isEnabled ? "on" : (LoginItem.needsApproval ? "waiting for approval in Login Items" : "off"))")
             print(failures == 0 ? "\nAll checks passed." : "\n\(failures) check(s) failed.")
             exit(failures == 0 ? 0 : 1)
         }

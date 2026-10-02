@@ -5,10 +5,10 @@ import SwiftUI
 struct SettingsView: View {
     var body: some View {
         TabView {
+            GeneralSettings()
+                .tabItem { Label("General", systemImage: "gearshape") }
             ServerSettings()
                 .tabItem { Label("Server", systemImage: "server.rack") }
-            AppearanceSettings()
-                .tabItem { Label("Appearance", systemImage: "circle.lefthalf.filled") }
             ShortcutSettings()
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
             FocusSettings()
@@ -104,8 +104,10 @@ private struct ServerSettings: View {
     }
 }
 
-struct AppearanceSettings: View {
+struct GeneralSettings: View {
     @Environment(AppSettings.self) private var settings
+    @ViewState private var openAtLogin = LoginItem.isEnabled
+    @ViewState private var loginItemError: String?
 
     var body: some View {
         Form {
@@ -121,8 +123,27 @@ struct AppearanceSettings: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+            Section("Startup") {
+                Toggle("Open Nextlet when you log in", isOn: Binding(
+                    get: { openAtLogin },
+                    set: { value in
+                        loginItemError = LoginItem.set(value)
+                        openAtLogin = LoginItem.isEnabled
+                    }
+                ))
+                if let loginItemError {
+                    Text(loginItemError).font(.callout).foregroundStyle(Palette.danger)
+                } else if LoginItem.needsApproval {
+                    HStack {
+                        Text("macOS needs your OK in Login Items first.").font(.callout).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Open Login Items") { LoginItem.openSystemSettings() }
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
+        .onAppear { openAtLogin = LoginItem.isEnabled }
     }
 }
 

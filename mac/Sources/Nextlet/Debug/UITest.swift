@@ -33,11 +33,13 @@ enum UITest {
         FontBook.register()
         let suiteName = "nextlet.ui-test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        let settings = AppSettings(defaults: defaults)
+        // The app's own objects (quick capture uses them), with preferences of their own.
+        let env = AppEnvironment.isolated(defaults: defaults)
+        let settings = env.settings
         settings.serverAddress = server
-        let store = Store(settings: settings)
-        let focus = FocusController(defaults: defaults)
-        let panelState = PanelState()
+        let store = env.store
+        let focus = env.focus
+        let panelState = env.panelState
 
         Task { @MainActor in
             await store.load()
@@ -277,6 +279,43 @@ enum UITest {
                 check("Sidebar “\(name)” can be found", false)
             }
         }
+
+        print("\nQuick capture")
+        var places: [(String, Route)] = [("Today", .today)]
+        if let project = store.projects.first { places.append((project.name, .project(project.id))) }
+        for (place, route) in places {
+            store.route = route
+            await pause(0.8)
+            guard let plus = pressable(window, "New Task") else {
+                check("The + button is there on \(place)", false)
+                continue
+            }
+            click(window, at: plus)
+            let panel = await waitForWindow { $0 is FloatingPanel }
+            let ready = await waitFor(2) { panel?.isKeyWindow == true && (panel?.firstResponder as? NSTextView)?.delegate is NSTextField }
+            check("On \(place), + opens quick capture ready to type", panel != nil && ready)
+            guard let panel, ready else {
+                AppEnvironment.shared.panels.hideCapture()
+                continue
+            }
+            // No day or project words in the title: quick add would read them as such.
+            let title = "UI test capture \(Int(Date().timeIntervalSince1970)) number \(places.firstIndex { $0.0 == place } ?? 0)"
+            typeText(title, in: panel)
+            let typed = (panel.firstResponder as? NSTextView)?.string ?? "?"
+            press(.return, in: panel)
+            let added = await waitFor { store.tasks.values.contains { $0.title == title } }
+            let task = store.tasks.values.first { $0.title == title }
+            if case .project(let id) = route {
+                check("…and the task lands in \(place)", added && task?.projectId == id, task.map { "project \($0.projectId ?? "none"), day \($0.day.map { "\($0)" } ?? "none")" } ?? "not added")
+            } else {
+                check("…and the task lands on Today", added && task?.day == today, task.map { "day \($0.day.map { "\($0)" } ?? "none")" } ?? "not added; the field held “\(typed)”")
+            }
+            created += store.tasks.values.filter { $0.title == title }.map(\.id)
+            AppEnvironment.shared.panels.hideCapture()
+            await pause(0.4)
+        }
+        store.route = .today
+        await pause(0.6)
 
         print("\nDeleting")
         reselect(store, id)

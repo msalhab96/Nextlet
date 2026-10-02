@@ -107,7 +107,7 @@ enum Snapshots {
             )
             await render("mac-14-settings", environment(SettingsView()), size: nil, titled: false, into: output)
             await render("mac-15-shortcuts", environment(ShortcutsView()), size: nil, titled: false, into: output)
-            await render("mac-16-appearance", environment(AppearanceSettings().frame(width: 540)), size: nil, titled: false, into: output)
+            await render("mac-16-general", environment(GeneralSettings().frame(width: 540)), size: nil, titled: false, into: output)
 
             defaults.removePersistentDomain(forName: suiteName)
             print("Wrote snapshots to \(output.path)")

@@ -36,7 +36,7 @@ struct NewTaskButton: View {
 
     var body: some View {
         Button {
-            store.newTaskRequest += 1
+            AppEnvironment.shared.panels.showCapture()
         } label: {
             Label("New Task", systemImage: "plus")
         }
@@ -324,6 +324,7 @@ struct UpcomingView: View {
                     }
                 }
                 FilterMenu()
+                NewTaskButton()
                 InspectorToggle()
             }
         }
@@ -436,7 +437,7 @@ struct DaySection: View {
                 TaskRow(task: task)
             }
             if adding {
-                AddTaskField(defaultDay: day, placeholder: "Add a task on \(DayFormat.short(day, today: today))", answersNewTask: false, compact: true) {
+                AddTaskField(defaultDay: day, placeholder: "Add a task on \(DayFormat.short(day, today: today))", compact: true) {
                     adding = false
                 }
                 .padding(.top, 4)
@@ -713,6 +714,7 @@ struct SearchResultsView: View {
                 ToolbarTitle(title: "Search", subtitle: "Titles and notes, including finished tasks")
             }
             ToolbarItemGroup(placement: .primaryAction) {
+                NewTaskButton()
                 InspectorToggle()
             }
         }

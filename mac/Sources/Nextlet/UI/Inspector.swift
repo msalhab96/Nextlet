@@ -362,7 +362,7 @@ struct TaskInspector: View {
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Notes").font(Typo.sans(12, .semibold))
-            NotesEditor(text: $notes, placeholder: "Add notes, links or context…")
+            PlainTextEditor(text: $notes, placeholder: "Add notes, links or context…")
                 .onChange(of: notes) {
                     if notes != task.notes { notesDirty = true }
                 }

@@ -69,8 +69,6 @@ final class Store {
     var projectFilter: String?
     var upcomingMode: UpcomingMode = .week
     var upcomingAnchor = Day.today()
-    /// Bumped to ask the visible list to focus its "New task" field (⌘N).
-    var newTaskRequest = 0
     /// Bumped to focus the search field (⌘K).
     var searchRequest = 0
 
@@ -190,8 +188,9 @@ final class Store {
 
     // MARK: Loading
 
-    func load() async {
-        phase = .loading
+    /// `quietly` keeps whatever is on screen until it works (used for retries).
+    func load(quietly: Bool = false) async {
+        if !quietly { phase = .loading }
         do {
             let api = try self.api
             let auth = try await api.authStatus()
@@ -621,9 +620,20 @@ final class Store {
     /// Where a quick-added task will land: "Personal · Tomorrow", "Inbox".
     func destination(of parsed: QuickAdd.Result, defaultDay: Day?, defaultProjectID: String? = nil) -> String {
         let day: Day? = parsed.day.map { $0.day } ?? defaultDay
-        let place = day.map { DayFormat.relative($0, today: today) } ?? "Inbox"
-        if let name = parsed.project?.name ?? project(defaultProjectID)?.name { return "\(name) · \(place)" }
-        return place
+        let name = parsed.project?.name ?? project(defaultProjectID)?.name
+        guard let day else { return name ?? "Inbox" }
+        let place = DayFormat.relative(day, today: today)
+        return name.map { "\($0) · \(place)" } ?? place
+    }
+
+    /// Where a new task goes unless you say otherwise: the screen you're looking at.
+    var newTaskDefaults: (day: Day?, projectID: String?) {
+        switch route {
+        case .today: return (today, projectFilter)
+        case .inbox: return (nil, projectFilter)
+        case .upcoming, .focus: return (today, nil)
+        case .project(let id): return (nil, id)
+        }
     }
 
     // MARK: Subtasks

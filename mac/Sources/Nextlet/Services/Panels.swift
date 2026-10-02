@@ -1,4 +1,5 @@
 import AppKit
+import NextletCore
 import Observation
 import SwiftUI
 
@@ -7,6 +8,9 @@ import SwiftUI
 final class PanelState {
     /// Bumped every time quick capture opens, so it starts empty and focused.
     var captureToken = 0
+    /// Where quick capture files a task unless you say otherwise, set each time it opens.
+    var captureDay: Day?
+    var captureProjectID: String?
     var focusTimerVisible = false
     var focusTimerPinned = true
     /// False when another app already owns the chosen quick capture shortcut.
@@ -41,6 +45,13 @@ final class PanelManager: NSObject, NSWindowDelegate {
     func showCapture() {
         let panel = capturePanel ?? makeCapturePanel()
         capturePanel = panel
+        // With the main window open, a new task goes where you're looking (Today, a project…).
+        // From anywhere else it goes to the Inbox.
+        let window = env.mainWindow
+        let defaults = window?.isVisible == true && window?.isMiniaturized == false
+            ? env.store.newTaskDefaults : (day: nil, projectID: nil)
+        env.panelState.captureDay = defaults.day
+        env.panelState.captureProjectID = defaults.projectID
         env.panelState.captureToken += 1
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         if let visible = screen?.visibleFrame {

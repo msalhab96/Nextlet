@@ -24,7 +24,6 @@ struct QuickCaptureView: View {
 
     private enum Field: Hashable {
         case title
-        case subtasks
     }
 
     @ViewState private var text = ""
@@ -34,6 +33,7 @@ struct QuickCaptureView: View {
     @ViewState private var showSubtasks = false
     @ViewState private var subtasksText = ""
     @ViewState private var confirmation: String?
+    @ViewState private var subtasksFocus = 0
     @ViewState private var showingDays = false
     @ViewState private var showingProjects = false
     @ViewState private var pickedDate = Date()
@@ -55,6 +55,10 @@ struct QuickCaptureView: View {
         if let priorityChoice { result.priority = priorityChoice == 0 ? nil : priorityChoice }
         return result
     }
+
+    /// The day and project from the screen quick capture was opened on, unless overridden.
+    private var defaultDay: Day? { panelState.captureDay }
+    private var defaultProjectID: String? { projectChoice == .none ? nil : panelState.captureProjectID }
 
     var body: some View {
         let result = self.result
@@ -93,14 +97,9 @@ struct QuickCaptureView: View {
                     if showSubtasks {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("SUBTASKS · ONE PER LINE").font(Typo.mono(10.5)).tracking(0.8).foregroundStyle(Palette.graphite)
-                            TextEditor(text: $subtasksText)
-                                .font(Typo.sans(13))
-                                .scrollContentBackground(.hidden)
-                                .padding(6)
-                                .frame(height: 72)
+                            PlainTextEditor(text: $subtasksText, placeholder: "One step per line", minHeight: 72, maxHeight: 160, focusRequest: subtasksFocus)
                                 .background(RoundedRectangle(cornerRadius: 8).fill(Palette.surface))
                                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line, lineWidth: 1))
-                                .focused($focused, equals: .subtasks)
                         }
                     }
                 }
@@ -139,7 +138,7 @@ struct QuickCaptureView: View {
                     .frame(height: 30)
                     optionButton(showSubtasks ? "Hide subtasks" : "Subtasks", icon: "list.bullet", shortcut: "⌘S") {
                         showSubtasks.toggle()
-                        focused = showSubtasks ? .subtasks : .title
+                        if showSubtasks { subtasksFocus += 1 } else { focused = .title }
                     }
                     .keyboardShortcut("s")
                     Spacer()
@@ -148,7 +147,7 @@ struct QuickCaptureView: View {
                 .padding(.vertical, 6)
 
                 HStack(spacing: 10) {
-                    (Text("Lands in ") + Text(store.destination(of: result, defaultDay: nil)).bold().foregroundColor(Palette.ink))
+                    (Text("Lands in ") + Text(store.destination(of: result, defaultDay: defaultDay, defaultProjectID: defaultProjectID)).bold().foregroundColor(Palette.ink))
                         .font(Typo.sans(12.5))
                         .foregroundStyle(Palette.graphite)
                     Spacer()
@@ -166,7 +165,9 @@ struct QuickCaptureView: View {
                         }
                     }
                     .buttonStyle(.nextlet(.primary))
+                    .keyboardShortcut(.return, modifiers: .command)
                     .disabled(result.title.isEmpty)
+                    .help("Add task (↵, or ⌘↵ from the subtasks)")
                 }
                 .padding(.leading, 20)
                 .padding(.trailing, 12)
@@ -315,14 +316,16 @@ struct QuickCaptureView: View {
     private func add() {
         let result = self.result
         guard !result.title.isEmpty else { return }
-        let destination = store.destination(of: result, defaultDay: nil)
+        let day = defaultDay
+        let projectID = defaultProjectID
+        let destination = store.destination(of: result, defaultDay: day, defaultProjectID: projectID)
         let subtasks = showSubtasks
             ? subtasksText.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             : []
         reset()
         focused = .title
         Task {
-            if await store.createFromQuickAdd(result, defaultDay: nil, subtasks: subtasks) != nil {
+            if await store.createFromQuickAdd(result, defaultDay: day, defaultProjectID: projectID, subtasks: subtasks) != nil {
                 confirmation = "“\(result.title)” added to \(destination)"
                 try? await Task.sleep(for: .seconds(3))
                 if confirmation?.contains(result.title) == true { confirmation = nil }

@@ -297,6 +297,7 @@ struct FocusPane: View {
                 ToolbarTitle(title: "Focus", subtitle: subtitle(session))
             }
             ToolbarItemGroup(placement: .primaryAction) {
+                NewTaskButton()
                 InspectorToggle()
             }
         }

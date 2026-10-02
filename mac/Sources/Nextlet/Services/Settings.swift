@@ -74,6 +74,7 @@ final class AppSettings {
         static let floatingTimer = "showFloatingTimer"
         static let sound = "playSoundWhenDone"
         static let appearance = "appearance"
+        static let loginItemConfigured = "loginItemConfigured"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -86,6 +87,8 @@ final class AppSettings {
     var focusMinutes: Int { didSet { defaults.set(focusMinutes, forKey: Key.focusMinutes) } }
     var showFloatingTimer: Bool { didSet { defaults.set(showFloatingTimer, forKey: Key.floatingTimer) } }
     var playSound: Bool { didSet { defaults.set(playSound, forKey: Key.sound) } }
+    /// Set once Nextlet has turned on "open at login" for the first time.
+    var loginItemConfigured: Bool { didSet { defaults.set(loginItemConfigured, forKey: Key.loginItemConfigured) } }
     var appearance: AppearanceMode {
         didSet {
             defaults.set(appearance.rawValue, forKey: Key.appearance)
@@ -103,6 +106,7 @@ final class AppSettings {
         showFloatingTimer = defaults.object(forKey: Key.floatingTimer) as? Bool ?? true
         playSound = defaults.object(forKey: Key.sound) as? Bool ?? true
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
+        loginItemConfigured = defaults.bool(forKey: Key.loginItemConfigured)
     }
 
     /// Every window, menu and panel follows the app's appearance.
